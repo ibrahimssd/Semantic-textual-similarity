@@ -57,7 +57,7 @@ class SiameseBiLSTMAttention(nn.Module):
         self.bi_lstm = torch.nn.LSTM(self.embedding_size, self.lstm_hidden_size, 
                             lstm_layers, batch_first=True , bias= True,bidirectional=True)
         ## TODO initialize self attention layers
-
+        self.atten = SelfAttention(self.lstm_hidden_size*2, self_attention_config.hidden_size, self_attention_config.output_size)
         ## incase we are using bi-directional lstm we'd have to take care of bi-directional outputs in
         ## subsequent layers
 
@@ -95,8 +95,10 @@ class SiameseBiLSTMAttention(nn.Module):
         ## TODO init context and hidden weights for lstm cell
         self.h_init,self.c_init = self.init_hidden(self.batch_size)
         output1,_ = self.forward_once(sent1_batch,sent1_lengths)
+        att1 = self.atten(output1)
         self.h_init,self.c_init = self.init_hidden(self.batch_size)
         output2,_ = self.forward_once(sent2_batch,sent2_lengths)
+        att2 = self.atten(output2)
         
         pass
         # TODO implement forward pass on both sentences. calculate similarity using similarity_score()
@@ -113,8 +115,19 @@ class SelfAttention(nn.Module):
         self.input_size = input_size
         self.hidden_size = hidden_size
         self.output_size = output_size
+        self.ws1 = nn.Linear(input_size, hidden_size, bias=False)
+        self.ws2 = nn.Linear(hidden_size, output_size, bias=False)
+        self.tanh = nn.Tanh()
+        self.softmax = nn.Softmax()
         
     ## the forward function would receive lstm's all hidden states as input
     def forward(self, attention_input):
         # TODO implement
-        pass
+        #pass
+        inp = attention_input.view(-1, attention_input.size()[2])
+        a = self.softmax(self.ws2(self.tanh(self.ws1(inp))))
+        print(a.shape)
+        m = torch.bmm(a * inp)
+        print(m.shape)
+        return a, m
+                         
