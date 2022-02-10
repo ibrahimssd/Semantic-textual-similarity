@@ -124,10 +124,13 @@ class SelfAttention(nn.Module):
     def forward(self, attention_input):
         # TODO implement
         #pass
-        inp = attention_input.view(-1, attention_input.size()[2])
+        size = attention_input.size()
+        inp = attention_input.reshape(size[0]*size[1],size[2])
         a = self.softmax(self.ws2(self.tanh(self.ws1(inp))))
-        print(a.shape)
-        m = torch.bmm(a * inp)
-        print(m.shape)
+    
+        a = a.reshape(size[0], self.output_size, -1)
+        print("a:",a.shape)
+        m = torch.bmm(a , attention_input)
+        print("m:",m.shape)
         return a, m
                          
