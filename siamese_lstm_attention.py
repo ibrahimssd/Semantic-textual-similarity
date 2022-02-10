@@ -112,6 +112,7 @@ class SelfAttention(nn.Module):
     def __init__(self, input_size, hidden_size, output_size):
         super(SelfAttention, self).__init__()
         # TODO implement
+        fc_hidden_size = 64
         self.input_size = input_size
         self.hidden_size = hidden_size
         self.output_size = output_size
@@ -119,18 +120,21 @@ class SelfAttention(nn.Module):
         self.ws2 = nn.Linear(hidden_size, output_size, bias=False)
         self.tanh = nn.Tanh()
         self.softmax = nn.Softmax()
+        self.fc = nn.Linear(input_size * output_size, fc_hidden_size)
         
     ## the forward function would receive lstm's all hidden states as input
     def forward(self, attention_input):
         # TODO implement
         #pass
+        print(attention_input.size())
         size = attention_input.size()
         inp = attention_input.reshape(size[0]*size[1],size[2])
         a = self.softmax(self.ws2(self.tanh(self.ws1(inp))))
     
         a = a.reshape(size[0], self.output_size, -1)
-        print("a:",a.shape)
+        print(a.shape)
         m = torch.bmm(a , attention_input)
-        print("m:",m.shape)
+        m = self.tanh(self.fc(m.reshape(size[0],-1)))
+        print(m.shape)
         return a, m
-                         
+                                              
