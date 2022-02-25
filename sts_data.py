@@ -88,6 +88,7 @@ class STSData:
 
         
         preprocessed_data = train_data['sentenceA&B'].apply(lambda x: data_field.preprocess(x))
+        
         data_field.build_vocab(
         preprocessed_data, 
         vectors='fasttext.simple.300d')
@@ -210,6 +211,7 @@ class STSData:
         """
         splited_sentence=sentence.split()
         codes=[self.vocab[token] for token in splited_sentence]
+        
         return codes
         
 
@@ -219,8 +221,8 @@ class STSData:
          length of sequence in that batch
          """
         num = len(sequences)
-        max_len = max([s.shape[0] for s in sequences])
-#         max_len = self.max_sequence_len
+#         max_len = max([s.shape[0] for s in sequences])
+        max_len = self.max_sequence_len
         out_dims = (num, max_len, *sequences[0].shape[1:])
         out_tensor = sequences[0].data.new(*out_dims).fill_(0)
         mask = sequences[0].data.new(*out_dims).fill_(0)
