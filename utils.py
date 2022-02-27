@@ -17,11 +17,12 @@ def plot_progress(stats):
     train_losses= stats['train_loss']
     val_losses=   stats['val_loss']
     epochs=   stats['epochs']
-    
+    train_score = stats['train_score']
+    val_score = stats['val_score']
     
     fig, axes = plt.subplots(1, 2, figsize=(8,4), dpi=100)
 
-    # plot subplot 1
+    # plot subplot 1 losses
     axes[0].plot(epochs, train_losses, color="green", label="train loss")
     axes[0].plot(epochs, val_losses, color="red", label="val loss")
     axes[0].legend(loc=2); # upper left corner
@@ -29,14 +30,23 @@ def plot_progress(stats):
     axes[0].set_ylabel('loss')
     axes[0].set_title('Plot training loss and validation loss')
 
-    # plot subplot 2
-    axes[1].plot(epochs, train_losses, color="green", label="train loss")
-    axes[1].plot(epochs, val_losses, color="red", label="val loss")
+    # plot subplot 2 scores 
+    axes[1].plot(epochs, train_score, color="green", label="train score")
+    axes[1].plot(epochs, val_score, color="red", label="val score")
     axes[1].legend(loc=2); # upper left corner
     axes[1].set_xlabel('epochs')
-    axes[1].set_ylabel('loss')
-    axes[1].set_title('Plot training loss and validation loss')
+    axes[1].set_ylabel('score')
+    axes[1].set_title('Plot training score and validation score')
    
     fig.tight_layout()
 
     plt.show()
+    
+    
+# customized function for pearson correlation  
+def r2_loss(output, target):
+    target_mean = torch.mean(target)
+    ss_tot = torch.sum((target - target_mean) ** 2)
+    ss_res = torch.sum((target - output) ** 2)
+    r2 = 1 - ss_res / ss_tot
+    return r2

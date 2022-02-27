@@ -26,13 +26,14 @@ class STSData:
         columns_mapping,
         stopwords_path="stopwords-en.txt",
         model_name="lstm",
-        max_sequence_len=512,
+        max_sequence_len= 30 , #512
         normalization_const=5.0,
-        normalize_labels=False,
+        normalize_labels=True,
     ):
         """
         Loads data into memory and create vocabulary from text field.
         """
+        self.normalize_labels = normalize_labels
         self.normalization_const = normalization_const
         self.normalize_labels = normalize_labels
         self.model_name = model_name
@@ -50,8 +51,10 @@ class STSData:
         """
         logging.info("loading and preprocessing data...")
 
-        ## TODO load datasets
+        ##  load datasets
         sick_dataset = load_dataset(dataset_name,download_mode='reuse_cache_if_exists')
+        
+        ## remove unneccessary rows
         sick_dataset=sick_dataset.remove_columns(['label','id','entailment_AB', 'entailment_BA', 'sentence_A_original',                                 'sentence_B_original', 'sentence_A_dataset', 'sentence_B_dataset'])
         train_pd=pd.DataFrame.from_dict(sick_dataset['train'])
         validation_pd=pd.DataFrame.from_dict(sick_dataset['validation'])
@@ -74,7 +77,7 @@ class STSData:
         training_dataset= self.processed_data[splits[0]]
         train_data= pd.DataFrame(training_dataset)
         
-        #create one string for sentenses in the two columns for vocabulary 
+        #combine pairs of sentence in train data frame to build vocabulary
         cols = list(self.columns_mapping.values())
         cols.pop()
         train_data['sentenceA&B']=train_data[cols].apply(lambda row: ' '.join(row.values.astype(str)), axis=1)
@@ -103,7 +106,7 @@ class STSData:
         """
         
         
-        
+        #convert sentences in data frames to tensors and add tensors to new column
         data['sent1_tensor']=data['sent1_tensor'].apply(lambda lis : torch.as_tensor(lis))
         data['sent2_tensor']=data['sent2_tensor'].apply(lambda lis : torch.as_tensor(lis))
            
@@ -119,7 +122,7 @@ class STSData:
         val_data_df=pd.DataFrame(self.processed_data['validation'])
         test_data_df=pd.DataFrame(self.processed_data['test'])
         
-        ##vectorize
+        ##vectorization
         train_data_df['sent1_tensor']=train_data_df['sentence_A'].apply(lambda sen: self.vectorize_sequence(sen))
         train_data_df['sent2_tensor']=train_data_df['sentence_B'].apply(lambda sen: self.vectorize_sequence(sen))
         
@@ -129,7 +132,7 @@ class STSData:
         test_data_df['sent1_tensor']=test_data_df['sentence_A'].apply(lambda sen: self.vectorize_sequence(sen))
         test_data_df['sent2_tensor']=test_data_df['sentence_B'].apply(lambda sen: self.vectorize_sequence(sen))
         
-        ## add tensor lengths columns 
+        ## add tensor lengths column as a new column in data_frames 
         train_data_df['sents1_length_tensor']=train_data_df['sent1_tensor'].apply(lambda tensor : len(tensor))
         train_data_df['sents2_length_tensor']=train_data_df['sent2_tensor'].apply(lambda tensor : len(tensor))
         
@@ -140,18 +143,21 @@ class STSData:
         test_data_df['sents2_length_tensor']=test_data_df['sent2_tensor'].apply(lambda tensor : len(tensor))
         
         ## Normalize labels
-        train_data_df['relatedness_score']=(train_data_df['relatedness_score']-                                                                train_data_df['relatedness_score'].min())/(train_data_df['relatedness_score'].max()-                                               train_data_df['relatedness_score'].min())
+        if (self.normalize_labels):
+                print(self.normalize_labels)
+                train_data_df['relatedness_score']=(train_data_df['relatedness_score']-                                                                train_data_df['relatedness_score'].min())/(train_data_df['relatedness_score'].max()-                                               train_data_df['relatedness_score'].min())
         
-        val_data_df['relatedness_score']=(val_data_df['relatedness_score']-                                                                val_data_df['relatedness_score'].min())/(val_data_df['relatedness_score'].max()-                                               val_data_df['relatedness_score'].min())
+                val_data_df['relatedness_score']=(val_data_df['relatedness_score']-                                                                val_data_df['relatedness_score'].min())/(val_data_df['relatedness_score'].max()-                                               val_data_df['relatedness_score'].min())
         
-        test_data_df['relatedness_score']=(test_data_df['relatedness_score']-                                                                test_data_df['relatedness_score'].min())/(test_data_df['relatedness_score'].max()-                                               test_data_df['relatedness_score'].min())
+                test_data_df['relatedness_score']=(test_data_df['relatedness_score']-                                                                test_data_df['relatedness_score'].min())/(test_data_df['relatedness_score'].max()-                                               test_data_df['relatedness_score'].min())
+            
         
-        ## convert everything to PyTorch tensors
+        ## convert sentenses to PyTorch tensors to feed in the model 
         train_data_df=self.data2tensors(train_data_df)
         val_data_df=self.data2tensors(val_data_df)
         test_data_df=self.data2tensors(test_data_df)
         
-        ##pad every sentence so that all of them have the same length
+        ##pad every sentence to max length so that all of them have the same length
         train_data_df['sent1_tensor']=self.pad_sequences(train_data_df['sent1_tensor'])
         train_data_df['sent2_tensor']=self.pad_sequences(train_data_df['sent2_tensor'])
         
@@ -160,7 +166,8 @@ class STSData:
         
         test_data_df['sent1_tensor']=self.pad_sequences(test_data_df['sent1_tensor'])
         test_data_df['sent2_tensor']=self.pad_sequences(test_data_df['sent2_tensor'])
-
+        
+        # creat data set object for each split 
         train_dataset =  STSDataset(train_data_df['sent1_tensor'],
                          train_data_df['sent2_tensor'],
                          train_data_df['relatedness_score'],
@@ -188,12 +195,13 @@ class STSData:
                          test_data_df['sentence_B']
                          )
         
-
-        train_loader = DataLoader(dataset = train_dataset, batch_size=batch_size, shuffle = True)
-        val_loader = DataLoader(dataset = val_dataset,batch_size=batch_size, shuffle = True)
-        test_loader = DataLoader(dataset = test_dataset, batch_size= batch_size, shuffle = True)
+        # build data loader for the splits 
+        train_loader = DataLoader(dataset = train_dataset, batch_size=batch_size, shuffle = True, drop_last=True)
+        val_loader = DataLoader(dataset = val_dataset,batch_size=batch_size, shuffle = True, drop_last = True)
+        test_loader = DataLoader(dataset = test_dataset, batch_size= batch_size, shuffle = True , drop_last= True)
         
         return train_loader, val_loader , test_loader
+    
     
     def sort_batch(self, batch, targets, lengths):
         """
@@ -220,9 +228,10 @@ class STSData:
          Pads zeros at the end of each sequence in data tensor till max
          length of sequence in that batch
          """
-        num = len(sequences)
-#         max_len = max([s.shape[0] for s in sequences])
-        max_len = self.max_sequence_len
+        #pad every split to the max length in the split  
+        num = len(sequences)        
+        max_len = max([s.shape[0] for s in sequences])
+#         max_len = self.max_sequence_len
         out_dims = (num, max_len, *sequences[0].shape[1:])
         out_tensor = sequences[0].data.new(*out_dims).fill_(0)
         mask = sequences[0].data.new(*out_dims).fill_(0)

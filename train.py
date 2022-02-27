@@ -5,7 +5,7 @@ import numpy as np
 from tqdm import tqdm
 from torch.autograd import Variable
 from sklearn.metrics import r2_score
-from utils import plot_stats
+from utils import plot_progress , r2_loss
 logging.basicConfig(level=logging.INFO)
 
 """
@@ -14,85 +14,89 @@ while monitoring a metric like accuracy etc
 """
 
 
-def train_model(model, optimizer, dataloader, data, max_epochs, config_dict):
+def train_model(model, optimizer,scheduler, dataloader, data, max_epochs, config_dict, clip=False):
     device = config_dict["device"]
     self_attention_config = config_dict['self_attention_config']
-    criterion = nn.MSELoss()
-    max_score = -1.7976931348623157e+308 #5e-1
+    mse = nn.MSELoss()
+    max_score = -1
     train_loader , val_loader , test_loader = dataloader
     train_generator = iter(train_loader)
-    num_batch=len(train_loader)
+    batch_train_num=len(train_loader)
     
     #save information for visualization
     dictionary_info={}
     dictionary_info['train_loss']=[]
     dictionary_info['val_loss']=[]
+    dictionary_info['train_score']=[]
+    dictionary_info['val_score']=[]
     dictionary_info['epochs']=[]
+    
     for epoch in tqdm(range(max_epochs)):
         y_true = list()
         y_pred = list()
         total_loss=0
+        total_Pearson_correlation=0
+        
         
         #iterate over train batches
-        for batch in range(1):
+        for batch in range(batch_train_num):
             
+            # protection block for restarting sampling in case dataloader stops 
             try:
-                # Samples the batch
+                # batch Samples
                 sent1_batch, sent2_batch, sent1_lengths, sent2_lengths,targets,raw_sent1,raw_sent2= next(train_generator)
-
             except StopIteration:
                 # restart the generator if the previous generator is exhausted.
                 train_generator = iter(train_loader)
                 sent1_batch, sent2_batch, sent1_lengths, sent2_lengths,targets,raw_sent1,raw_sent2= next(train_generator)
         
-        
-            sent1_batch = Variable(sent1_batch)
-            sent2_batch= Variable(sent2_batch)
-        
+            
+            # calculate predictions and attended matrix for penalizing term
             predictions , attention_matrix = model.forward(sent1_batch, sent2_batch, sent1_lengths, sent2_lengths)
-            predictions= Variable(predictions)
-            targets = Variable(targets)
             
             
-            
-        
-        
-        
+            # Protect loss calculations from nan values 
             try:
-                 
-                batch_train_loss = criterion(predictions,targets) + (attention_penalty_loss(attention_matrix, 
-                                                                  self_attention_config['penalty'], device))
-                       
+                
+                batch_train_loss = mse(predictions.float(),targets.float()) + attention_penalty_loss(attention_matrix,                                                                                      self_attention_config['penalty'], device)                
+                #Pearson_correlation= r2_score(targets.detach().numpy(),predictions.detach().numpy())
+                
             except RuntimeError:
             
                 raise Exception("nan values on regularization. Rremove regularization or add very small values")
             
             
             
-            batch_train_loss= Variable(batch_train_loss)
-            batch_train_loss.requires_grad=True
-            optimizer.zero_grad(set_to_none=True) #or  model.zero_grad()
+            optimizer.zero_grad() #or  model.zero_grad(set_to_none=True)                                                       
             batch_train_loss.backward()
-            optimizer.step()
+                                           
+            #gradient clipping before optimizer step
+            if clip:
+#                 print("inside clipping")
+                torch.nn.utils.clip_grad_norm(model.parameters(),0.5)
+                
+            optimizer.step()            
             total_loss += batch_train_loss
-            y_true+=list(targets)
-            y_pred+=list(predictions)
+#             total_Pearson_correlation+=Pearson_correlation
+            y_true+=list(targets.detach().numpy())
+            y_pred+=list(predictions.detach().numpy())
             
-        
-            
-        
+        scheduler.step()
         
         
         
-        # TODO: computing accuracy using sklearn's function
-        
-        #accuracy = (torch.argmax(predictions, axis=-1) == targets).float().mean()
+        #computing accuracy using sklearn's function
         score = r2_score(y_true, y_pred)
+
+        #scaled pearson correlation
         
+#         score= total_Pearson_correlation/batch_train_num
+#         z_score= torch.atanh(torch.tensor(score))
+#         score = torch.tanh(z_score)
         
         ## compute model metrics on dev set
         val_score, val_loss = evaluate_dev_set(
-            model, data, criterion, val_loader, config_dict, device
+            model,  mse, val_loader, config_dict, device
         )
 
         
@@ -108,30 +112,35 @@ def train_model(model, optimizer, dataloader, data, max_epochs, config_dict):
         
         logging.info(
             "Train loss: {} - Train score: {} -- Validation loss: {} - Validation score: {}".format(
-                torch.mean(total_loss.data.float()), score, val_loss, val_score
+                total_loss.data.float()/batch_train_num, score, val_loss, val_score
             )
         )
 
         
-
-        if True: #epoch % 100 == 0:
-             print('[%d/%d] train_loss: %.3f, accuracy_score: %.3f' %
-                   (epoch , max_epochs - 1,torch.mean(total_loss.data.float()), score))
+        # print results every 100 epochs
+        if epoch % 10 == 0:
+             print('[%d/%d] train_loss: %.3f, train_score: %.3f' %
+                   (epoch , max_epochs - 1,total_loss.data.float()/batch_train_num,score))
         if epoch == max_epochs - 1:
              print('Final score: %.3f, expected %.3f' %
                          (score, 1.0))
         
-    
-        dictionary_info['train_loss'].append(total_loss.data.float().item())
+         
+        # save progress in a dictionary for plot purposes 
+        
+        dictionary_info['train_loss'].append(total_loss.data.float().item()/batch_train_num)
         dictionary_info['val_loss'].append(val_loss.item())
         dictionary_info['epochs'].append(epoch)
-    #Visualize the progress
+        dictionary_info['train_score'].append(score)
+        dictionary_info['val_score'].append(val_score)
     
-    plot_stats(dictionary_info)
+    #Visualize the progress
+    plot_progress(dictionary_info)
     return model
 
 
-def evaluate_dev_set(model, data, criterion, data_loader, config_dict, device):
+# Eevaluate model on val data split for hyperparameter tuning 
+def evaluate_dev_set(model, criterion, data_loader, config_dict, device):
     """
     Evaluates the model performance on dev data
     """
@@ -142,14 +151,15 @@ def evaluate_dev_set(model, data, criterion, data_loader, config_dict, device):
     self_attention_config = config_dict['self_attention_config']
     val_loader = data_loader
     val_generator = iter(val_loader)
-    num_batch=len(val_loader)
+    batch_val_num=len(val_loader)
     y_true = list()
     y_pred = list()
     total_loss = 0
     
     #iterate over train batches
-    for batch in range(1):
+    for batch in range(batch_val_num):
             
+            # protection block for restarting sampling in case dataloader stops
             try:
                 # Samples the batch
                 sent1_batch, sent2_batch, sent1_lengths, sent2_lengths,targets,raw_sent1,raw_sent2= next(val_generator)
@@ -160,17 +170,11 @@ def evaluate_dev_set(model, data, criterion, data_loader, config_dict, device):
                 sent1_batch, sent2_batch, sent1_lengths, sent2_lengths,targets,raw_sent1,raw_sent2= next(val_generator)
         
         
-            sent1_batch = Variable(sent1_batch)
-            sent2_batch= Variable(sent2_batch)
-        
             predictions , attention_matrix = model.forward(sent1_batch, sent2_batch, sent1_lengths, sent2_lengths)
-#             predictions= Variable(predictions
-#             targets = Variable(targets)        
             
             try:
                  batch_val_loss = criterion(predictions,targets) + (attention_penalty_loss(attention_matrix, 
-                                                                  self_attention_config['penalty'], device))
-                       
+                                                                  self_attention_config['penalty'], device))                       
             except RuntimeError:
             
                 raise Exception("nan values on regularization. Rremove regularization or add very small values")
@@ -181,9 +185,9 @@ def evaluate_dev_set(model, data, criterion, data_loader, config_dict, device):
             y_pred+=list(predictions.detach().numpy())
     
     
-    acc = r2_score(y_true, y_pred)
-    
-    return acc, torch.mean(total_loss.data.float())
+    val_score = r2_score(y_true, y_pred)
+    val_loss = total_loss.data.float()/batch_val_num    
+    return val_score, val_loss
 
 def attention_penalty_loss(annotation_weight_matrix, penalty_coef, device):
     """
@@ -202,7 +206,9 @@ def attention_penalty_loss(annotation_weight_matrix, penalty_coef, device):
     identity = Variable(identity.unsqueeze(0).expand(batch_size,attention_out_size,attention_out_size))
     annotation_mul_difference=annotation_weight_matrix@annotation_weight_matrix_trans - identity
     penalty = frobenius_norm(annotation_mul_difference)
-    return penalty_coef*penalty
+    regulizing_term = penalty_coef*penalty
+    
+    return regulizing_term
 
 
 def frobenius_norm(annotation_mul_difference):
@@ -221,7 +227,4 @@ def frobenius_norm(annotation_mul_difference):
  
        
         """
-    
-#    torch.norm(annotation_mul_difference.float(), p='fro')
-#     torch.sum(torch.sum(torch.sum(annotation_mul_difference**2,1),1)**0.5).type(torch.DoubleTensor)
     return torch.sqrt(torch.sum(annotation_mul_difference**2))

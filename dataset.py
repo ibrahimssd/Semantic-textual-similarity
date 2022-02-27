@@ -23,6 +23,7 @@ class STSDataset(Dataset):
         initializes  and populates the the length, data and target tensors, and raw texts list
         """
         
+        # We have made minor modifications in the assert block because targets and sentences have been passed as lists 
         assert (
             
             

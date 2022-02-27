@@ -13,12 +13,13 @@ class Preprocess:
         """
         Initializes regex patterns and loads stopwords
         """
-        # TODO implement
+        # Save stop words in a list and compile a regular expression pattern provided as a string into a regex pattern object
         with open(stpwds_file_path) as fh:
-            self.stopwords=list(set(fh.read().split()))
+            self.stopwords=list(set(fh.read().split()))    
         self.noise_re = re.compile('\\b(%s)\\W'%('|'.join(map(re.escape,self.stopwords))),re.I)
     
 
+    #preprocess and clean text data 
     def perform_preprocessing(self, data, columns_mapping):
         sen_A=columns_mapping['sent1']
         sen_B= columns_mapping['sent2']
