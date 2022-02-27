@@ -1,11 +1,15 @@
+import os 
+import sys
 import torch
 from torch import nn
 import logging
+import pickle
 import numpy as np
 from tqdm import tqdm
 from torch.autograd import Variable
-from sklearn.metrics import r2_score
+from sklearn.metrics import r2_score , explained_variance_score, d2_tweedie_score
 from utils import plot_progress , r2_loss
+from datetime import datetime
 logging.basicConfig(level=logging.INFO)
 
 """
@@ -59,7 +63,7 @@ def train_model(model, optimizer,scheduler, dataloader, data, max_epochs, config
             try:
                 
                 batch_train_loss = mse(predictions.float(),targets.float()) + attention_penalty_loss(attention_matrix,                                                                                      self_attention_config['penalty'], device)                
-                #Pearson_correlation= r2_score(targets.detach().numpy(),predictions.detach().numpy())
+#                 Pearson_correlation= r2_loss(targets,predictions)
                 
             except RuntimeError:
             
@@ -69,7 +73,9 @@ def train_model(model, optimizer,scheduler, dataloader, data, max_epochs, config
             
             optimizer.zero_grad() #or  model.zero_grad(set_to_none=True)                                                       
             batch_train_loss.backward()
-                                           
+#             Pearson_correlation=Variable(Pearson_correlation, requires_grad=True)                            
+#             Pearson_correlation.backward()
+            
             #gradient clipping before optimizer step
             if clip:
 #                 print("inside clipping")
@@ -86,7 +92,7 @@ def train_model(model, optimizer,scheduler, dataloader, data, max_epochs, config
         
         
         #computing accuracy using sklearn's function
-        score = r2_score(y_true, y_pred)
+        score = d2_tweedie_score(y_true, y_pred)
 
         #scaled pearson correlation
         
@@ -96,7 +102,7 @@ def train_model(model, optimizer,scheduler, dataloader, data, max_epochs, config
         
         ## compute model metrics on dev set
         val_score, val_loss = evaluate_dev_set(
-            model,  mse, val_loader, config_dict, device
+            model,  mse, dataloader, config_dict, device
         )
 
         
@@ -118,7 +124,7 @@ def train_model(model, optimizer,scheduler, dataloader, data, max_epochs, config
 
         
         # print results every 100 epochs
-        if epoch % 10 == 0:
+        if epoch % 5 == 0:
              print('[%d/%d] train_loss: %.3f, train_score: %.3f' %
                    (epoch , max_epochs - 1,total_loss.data.float()/batch_train_num,score))
         if epoch == max_epochs - 1:
@@ -133,9 +139,22 @@ def train_model(model, optimizer,scheduler, dataloader, data, max_epochs, config
         dictionary_info['epochs'].append(epoch)
         dictionary_info['train_score'].append(score)
         dictionary_info['val_score'].append(val_score)
-    
+        
+        # save data to file
+        if epoch == max_epochs - 1:
+            now = datetime.now().time() # time object
+            now = str(now)        
+            textfile = open("logs/"+now+"losses&scores.txt", "w")
+            textfile.write(" epochs : " +str(dictionary_info['epochs']))
+            textfile.write("\n train_losses : " +str(dictionary_info['train_loss']))
+            textfile.write("\n val_losses : " +str(dictionary_info['val_loss']))
+            textfile.write("\n train_scores : " +str(dictionary_info['train_score']))
+            textfile.write("\n val_scores : " +str(dictionary_info['val_score']))
+        
+            textfile.close()
+        
     #Visualize the progress
-    plot_progress(dictionary_info)
+    plot_progress(dictionary_info,max_epochs)
     return model
 
 
@@ -149,7 +168,7 @@ def evaluate_dev_set(model, criterion, data_loader, config_dict, device):
     
     device = config_dict["device"]
     self_attention_config = config_dict['self_attention_config']
-    val_loader = data_loader
+    train_loader , val_loader , test_loader = data_loader
     val_generator = iter(val_loader)
     batch_val_num=len(val_loader)
     y_true = list()
@@ -157,7 +176,7 @@ def evaluate_dev_set(model, criterion, data_loader, config_dict, device):
     total_loss = 0
     
     #iterate over train batches
-    for batch in range(batch_val_num):
+    for batch in range(batch_val_num):            
             
             # protection block for restarting sampling in case dataloader stops
             try:
@@ -185,8 +204,8 @@ def evaluate_dev_set(model, criterion, data_loader, config_dict, device):
             y_pred+=list(predictions.detach().numpy())
     
     
-    val_score = r2_score(y_true, y_pred)
-    val_loss = total_loss.data.float()/batch_val_num    
+    val_score = d2_tweedie_score(y_true, y_pred)
+    val_loss = (total_loss.data.float()/batch_val_num)
     return val_score, val_loss
 
 def attention_penalty_loss(annotation_weight_matrix, penalty_coef, device):

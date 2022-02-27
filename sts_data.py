@@ -144,7 +144,7 @@ class STSData:
         
         ## Normalize labels
         if (self.normalize_labels):
-                print(self.normalize_labels)
+                
                 train_data_df['relatedness_score']=(train_data_df['relatedness_score']-                                                                train_data_df['relatedness_score'].min())/(train_data_df['relatedness_score'].max()-                                               train_data_df['relatedness_score'].min())
         
                 val_data_df['relatedness_score']=(val_data_df['relatedness_score']-                                                                val_data_df['relatedness_score'].min())/(val_data_df['relatedness_score'].max()-                                               val_data_df['relatedness_score'].min())

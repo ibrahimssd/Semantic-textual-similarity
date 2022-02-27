@@ -114,7 +114,7 @@ class SiameseBiLSTMAttention(nn.Module):
         ## init context and hidden weights for lstm cell
         self.h_init,self.c_init = self.init_hidden(self.batch_size)                        
         output1,_ = self.forward_once(sent1_batch,sent1_lengths)
-        self.h_init,self.c_init = self.init_hidden(self.batch_size)
+#         self.h_init,self.c_init = self.init_hidden(self.batch_size)
         output2,_ = self.forward_once(sent2_batch,sent2_lengths)
         
         ## Self attention Layer
