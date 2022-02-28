@@ -230,8 +230,8 @@ class STSData:
          """
         #pad every split to the max length in the split  
         num = len(sequences)        
-        max_len = max([s.shape[0] for s in sequences])
-#         max_len = self.max_sequence_len
+#         max_len = max([s.shape[0] for s in sequences])
+        max_len = self.max_sequence_len
         out_dims = (num, max_len, *sequences[0].shape[1:])
         out_tensor = sequences[0].data.new(*out_dims).fill_(0)
         mask = sequences[0].data.new(*out_dims).fill_(0)

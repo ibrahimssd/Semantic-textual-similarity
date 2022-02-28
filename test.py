@@ -1,9 +1,10 @@
 import torch
-from scipy import stats
+from scipy.stats import spearmanr 
 import logging
 from torch import nn
-from sklearn.metrics import r2_score
+from sklearn.metrics import r2_score,mean_absolute_error
 from torch.autograd import Variable
+import numpy as np
 from train import attention_penalty_loss
 
 def evaluate_test_set(model, data_loader, config_dict):
@@ -33,12 +34,15 @@ def evaluate_test_set(model, data_loader, config_dict):
             except StopIteration:
                 # restart the generator if the previous generator is exhausted.
                 train_generator = iter(train_loader)
-                sent1_batch, sent2_batch, sent1_lengths, sent2_lengths,targets,raw_sent1,raw_sent2= next(test_generator)                        
+                sent1_batch, sent2_batch, sent1_lengths, sent2_lengths,targets,raw_sent1,raw_sent2= next(test_generator)                     
+            
             predictions , attention_matrix = model.forward(sent1_batch, sent2_batch, sent1_lengths, sent2_lengths)
+            
             
             # protect loss calculations from nan values 
             try:
-                    batch_test_loss = mse(predictions,targets) + attention_penalty_loss(attention_matrix,                                                                                      self_attention_config['penalty'], device)         
+#                     targets= Variable(targets, requires_grad=True)
+                    batch_test_loss = mean_absolute_error(targets.detach().numpy(),predictions.detach().numpy())         
                     
             except RuntimeError:
                   
@@ -48,11 +52,15 @@ def evaluate_test_set(model, data_loader, config_dict):
             total_loss += batch_test_loss
             y_true+=list(targets.detach().numpy())
             y_pred+=list(predictions.detach().numpy())
+            
+            
+            
+            
+    test_score, p_value = spearmanr(y_true, y_pred, nan_policy='omit')
+    test_score= np.corrcoef(y_true, y_pred)[0,1]
     
+    print('test_loss: %.3f, test_score: %.3f , p_value: %.3f' % (total_loss/num_test_batch,test_score,p_value))
     
-    test_score = r2_score(y_true, y_pred)
-    
-    print(' test_loss: %.3f, test_score: %.3f' % (total_loss.data.float()/num_test_batch, test_score))
 
 
     

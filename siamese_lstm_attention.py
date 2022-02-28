@@ -3,7 +3,7 @@ import torch.nn as nn
 from torch.autograd import Variable
 from torch.nn import functional as F
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
-from utils import similarity_score
+from utils import similarity_score 
 
 
 """
@@ -55,7 +55,7 @@ class SiameseBiLSTMAttention(nn.Module):
         
         # assign the look-up table to the pre-trained fasttext word embeddings.
 #         self.embeddings.weight = nn.Parameter(embedding_weights)
-        self.lookup_table=  self.embeddings #self.embeddings #Variable(self.embeddings,requires_grad=True) #self.embeddings 
+        self.lookup_table=  embedding_weights#self.embeddings #Variable(self.embeddings,requires_grad=True) #self.embeddings 
         
         ## incase we are using bi-directional lstm we'd have to take care of bi-directional outputs in
         ## subsequent layers    
@@ -68,6 +68,7 @@ class SiameseBiLSTMAttention(nn.Module):
                                     self_attention_config['output_size'])
         
         #Initialize fully connected layer
+        self.normalize = nn.BatchNorm1d(64)
         self.fc = nn.Linear(2*self.lstm_hidden_size * self_attention_config['output_size'], self.fc_hidden_size )
         self.tanh = nn.Tanh()
         
@@ -97,7 +98,7 @@ class SiameseBiLSTMAttention(nn.Module):
         ## embeddings shape: ( batch_size, seq_len, embedding_size)
         
         #h_init,c_init = self.init_hidden(batch_size)
-        input_batch_sequences= self.lookup_table(batch)
+        input_batch_sequences= self.lookup_table[batch]
         input_batch_sequences= Variable(input_batch_sequences,requires_grad=True)
         
         output, (hn, cn) = self.bi_lstm(input_batch_sequences, (self.h_init, self.c_init))
@@ -117,22 +118,31 @@ class SiameseBiLSTMAttention(nn.Module):
 #         self.h_init,self.c_init = self.init_hidden(self.batch_size)
         output2,_ = self.forward_once(sent2_batch,sent2_lengths)
         
+        
+
+        
+        
         ## Self attention Layer
         attended_embeddings_sent1, attention_matrix_sent1 = self.SelfAtt.forward(output1)
         attended_embeddings_sent2, attention_matrix_sent2 = self.SelfAtt.forward(output2)
         
         
+        
+        
         ## Fully connected layer 
+       
         
+        final_embeddings_sent1= self.tanh(self.normalize(self.fc(attended_embeddings_sent1.reshape(output1.size(0),-1))))
+        final_embeddings_sent2= self.tanh(self.normalize(self.fc(attended_embeddings_sent2.reshape(output1.size(0),-1))))
         
-        final_embeddings_sent1= self.tanh(self.fc(attended_embeddings_sent1.reshape(output1.size(0),-1)))
-        final_embeddings_sent2= self.tanh(self.fc(attended_embeddings_sent2.reshape(output2.size(0),-1)))
         
         
         
         #similarity score prediction
+        
         predictions = similarity_score(final_embeddings_sent1, final_embeddings_sent2)
         attention_mat=torch.cat((attention_matrix_sent1, attention_matrix_sent2), 2)
+        
         
         
         

@@ -1,8 +1,9 @@
 import torch
 import matplotlib.pyplot as plt
 from datetime import datetime
+from scipy import spatial
 
-
+#Manhattan Distance
 def similarity_score(input1, input2):
     # Get similarity predictions:
     dif = input1.squeeze() - input2.squeeze()
@@ -11,6 +12,7 @@ def similarity_score(input1, input2):
     y_hat = torch.exp(-norm)
     y_hat = torch.clamp(y_hat, min=1e-7, max=1.0 - 1e-7)
     return y_hat
+
 
 
 # plot losses and accuracy progress
