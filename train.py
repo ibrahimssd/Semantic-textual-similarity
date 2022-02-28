@@ -65,11 +65,8 @@ def train_model(model, optimizer,scheduler, dataloader, data, max_epochs, config
             # Protect loss calculations from nan values 
             try:
                 
-                
-                
                 targets= Variable(targets, requires_grad=True)                
-                batch_train_loss = mse(predictions.float(),targets.float()) + attention_penalty_loss(attention_matrix,                                                                                      self_attention_config['penalty'], device)                
-#                 Pearson_correlation= r2_loss(targets,predictions)
+                batch_train_loss = mse(predictions.float(),targets.float()) + attention_penalty_loss(attention_matrix,                                                                                      self_attention_config['penalty'], device)  
                 
             except RuntimeError:
             
@@ -78,19 +75,18 @@ def train_model(model, optimizer,scheduler, dataloader, data, max_epochs, config
             
             
             optimizer.zero_grad() #or  model.zero_grad(set_to_none=True)  
-#             batch_train_loss=Variable(batch_train_loss, requires_grad=True)
             batch_train_loss.backward()
-#             Pearson_correlation=Variable(Pearson_correlation, requires_grad=True)                            
-#             Pearson_correlation.backward()
+
+
             
             #gradient clipping before optimizer step
             if clip:
-#                 print("inside clipping")
+
                 torch.nn.utils.clip_grad_norm(model.parameters(),0.5)
                 
             optimizer.step()            
             total_loss += batch_train_loss
-#             total_Pearson_correlation+=Pearson_correlation
+           
             y_true+=list(targets.detach().numpy())
             y_pred+=list(predictions.detach().numpy())
             
@@ -98,25 +94,19 @@ def train_model(model, optimizer,scheduler, dataloader, data, max_epochs, config
         
         
         
-        #computing accuracy using sklearn's function r2_score Best possible score is 1.0 
+        #computing accuracy using pearson correlation Best possible score is 1.0 
         # and it can be negative (because the model can be arbitrarily worse)
-        score, p_value = spearmanr(y_true, y_pred, nan_policy='omit')
+#         spearman_score, _ = spearmanr(y_true, y_pred, nan_policy='omit')
         
         score =np.corrcoef(y_true, y_pred)[0,1]#r2_score(y_true, y_pred) #explained_variance_score(y_true, y_pred)
-        
-        #scaled pearson correlation
-        
-#         score= total_Pearson_correlation/batch_train_num
-#         z_score= torch.atanh(torch.tensor(score))
-#         score = torch.tanh(z_score)
+             
         
         ## compute model metrics on dev set
         val_score, val_loss , val_pvalue= evaluate_dev_set(
             model,  mse, dataloader, config_dict, device
         )
 
-        
-        
+                
         if val_score > max_score:
             max_score = val_score
             logging.info(
@@ -127,7 +117,7 @@ def train_model(model, optimizer,scheduler, dataloader, data, max_epochs, config
 
         
         logging.info(
-            "Train loss: {} - Train score: {} -- Validation loss: {} - Validation score: {}- Validation p_value: {}".format(
+            "Train loss: {} - Train pearson score: {} -- Validation loss: {} - Validation pearson score: {}- Validation                  p_value: {}".format(
                 total_loss.data.float()/batch_train_num, score, val_loss, val_score,val_pvalue
             )
         )
@@ -135,14 +125,14 @@ def train_model(model, optimizer,scheduler, dataloader, data, max_epochs, config
         
         # print results every 100 epochs
         if True: #epoch % 5 == 0:
-             print('[%d/%d] train_loss: %.3f, train_score: %.3f , p_value: %.3f' %
-                   (epoch , max_epochs - 1,total_loss.data.float()/batch_train_num,score,p_value))
+             print('[%d/%d] train_loss: %.3f, train_score: %.3f ' %
+                   (epoch , max_epochs - 1,total_loss.data.float()/batch_train_num,score))
         if epoch == max_epochs - 1:
              print('Final score: %.3f, expected %.3f' %
                          (score, 1.0))
         
          
-        # save progress in a dictionary for plot purposes 
+        # save progress in a dictionary for ploting purposes 
         
         dictionary_info['train_loss'].append(total_loss.data.float().item()/batch_train_num)
         dictionary_info['val_loss'].append(val_loss.item())
@@ -150,7 +140,7 @@ def train_model(model, optimizer,scheduler, dataloader, data, max_epochs, config
         dictionary_info['train_score'].append(score)
         dictionary_info['val_score'].append(val_score)
         
-        # save data to file
+        # save results to txt files
         if epoch == max_epochs - 1:
             now = datetime.now().time() # time object
             now = str(now)        
@@ -160,7 +150,6 @@ def train_model(model, optimizer,scheduler, dataloader, data, max_epochs, config
             textfile.write("\n\n val_losses : " +str(dictionary_info['val_loss']))
             textfile.write("\n\n train_scores : " +str(dictionary_info['train_score']))
             textfile.write("\n\n val_scores : " +str(dictionary_info['val_score']))
-        
             textfile.close()
         
     #Visualize the progress
@@ -203,22 +192,21 @@ def evaluate_dev_set(model, criterion, data_loader, config_dict, device):
             targets= Variable(targets, requires_grad=True)
             
             try:
-                 
                 
-                    
+                # evaluate penalized loss
                 batch_val_loss = criterion(predictions.float(),targets.float()) + (attention_penalty_loss(attention_matrix, 
                                                                   self_attention_config['penalty'], device))                       
             except RuntimeError:
             
                 raise Exception("nan values on regularization. Rremove regularization or add very small values")
             
-            #save the loss for batches
+            #save avg loss for batches into list
             total_loss += batch_val_loss
             y_true+=list(targets.detach().numpy())
             y_pred+=list(predictions.detach().numpy())
     
     
-    val_score, p_value = spearmanr(y_true, y_pred, nan_policy='omit')
+    spearman_score, p_value = spearmanr(y_true, y_pred, nan_policy='omit')
     val_score = np.corrcoef(y_true, y_pred)[0,1]
     val_loss = (total_loss.data.float()/batch_val_num)
     return val_score, val_loss , p_value

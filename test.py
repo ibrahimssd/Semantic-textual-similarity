@@ -21,8 +21,8 @@ def evaluate_test_set(model, data_loader, config_dict):
     num_test_batch=len(test_loader)
     y_true = list()
     y_pred = list()
-    total_loss = 0
-    
+    total_abs_loss = 0
+    total_mse_loss= 0
     #iterate over test batches
     for batch in range(num_test_batch):
             
@@ -42,24 +42,25 @@ def evaluate_test_set(model, data_loader, config_dict):
             # protect loss calculations from nan values 
             try:
 #                     targets= Variable(targets, requires_grad=True)
-                    batch_test_loss = mean_absolute_error(targets.detach().numpy(),predictions.detach().numpy())         
-                    
+                    abs_batch_test_loss = mean_absolute_error(targets.detach().numpy(),predictions.detach().numpy())         
+                    mse_batch_test_loss = mse(targets, predictions)
             except RuntimeError:
                   
                     raise Exception("nan values on regularization. Rremove regularization or add very small values")
             
             #save the loss for test batches
-            total_loss += batch_test_loss
+            total_abs_loss += abs_batch_test_loss
+            total_mse_loss += mse_batch_test_loss
             y_true+=list(targets.detach().numpy())
             y_pred+=list(predictions.detach().numpy())
             
             
             
             
-    test_score, p_value = spearmanr(y_true, y_pred, nan_policy='omit')
-    test_score= np.corrcoef(y_true, y_pred)[0,1]
+    spearman_score, _ = spearmanr(y_true, y_pred, nan_policy='omit')
+    pearson_score= np.corrcoef(y_true, y_pred)[0,1]
     
-    print('test_loss: %.3f, test_score: %.3f , p_value: %.3f' % (total_loss/num_test_batch,test_score,p_value))
+    print('abs_batch_test_loss: %.3f, mse_batch_test_loss: %.3f, spearman_score: %.3f , pearson_score: %.3f' %                                              (total_abs_loss/num_test_batch,total_mse_loss/num_test_batch,spearman_score,pearson_score))
     
 
 
