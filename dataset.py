@@ -1,5 +1,5 @@
 from torch.utils.data import Dataset
-from datasets import load_dataset,Dataset
+from datasets import load_dataset, Dataset
 import torch
 
 
@@ -22,19 +22,20 @@ class STSDataset(Dataset):
         """
         initializes  and populates the the length, data and target tensors, and raw texts list
         """
-        
-        # We have made minor modifications in the assert block because targets and sentences have been passed as lists 
+
+        # We made minor modifications in the assert block because targets and sentences are passed as lists not tensors in our implementation.
+        # some parts converted to tensors to use size() property.
+
         assert (
-            
-            
+
+
             len(sent1_tensor)
             == torch.tensor(list(target_tensor)).size(0)
             == len(sent2_tensor)
             == torch.tensor(list(sents1_length_tensor)).size(0)
             == torch.tensor(list(sents2_length_tensor)).size(0)
         )
-        
-        
+
         self.sent1_tensor = sent1_tensor
         self.sent2_tensor = sent2_tensor
         self.target_tensor = target_tensor

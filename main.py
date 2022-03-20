@@ -6,7 +6,7 @@ from test import evaluate_test_set
 
 
 def main():
-    ## define configurations and hyperparameters
+    # define configurations and hyperparameters
     columns_mapping = {
         "sent1": "sentence_A",
         "sent2": "sentence_B",
@@ -33,14 +33,14 @@ def main():
     max_epochs = 5
     bidirectional = True
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    ## self attention config
+    # self attention config
     self_attention_config = {
-        "hidden_size": 150,  ## refers to variable 'da' in the ICLR paper
-        "output_size": 20,  ## refers to variable 'r' in the ICLR paper
-        "penalty": 0.0,  ## refers to penalty coefficient term in the ICLR paper
+        "hidden_size": 150,  # refers to variable 'da' in the ICLR paper
+        "output_size": 20,  # refers to variable 'r' in the ICLR paper
+        "penalty": 0.0,  # refers to penalty coefficient term in the ICLR paper
     }
 
-    ## init siamese lstm
+    # init siamese lstm
     siamese_lstm_attention = SiameseBiLSTMAttention(
         batch_size=batch_size,
         output_size=output_size,
@@ -54,10 +54,10 @@ def main():
         device=device,
         bidirectional=bidirectional,
     )
-    ## move model to device
+    # move model to device
     siamese_lstm_attention.to(device)
 
-    ## define optimizer and loss function
+    # define optimizer and loss function
     optimizer = torch.optim.Adam(params=siamese_lstm_attention.parameters())
 
     siamese_lstm_attention = train_model(
