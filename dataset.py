@@ -18,14 +18,13 @@ class STSDataset(Dataset):
         sents2_length_tensor,
         raw_sents_1,
         raw_sents_2,
+        sen_class,
     ):
         """
         initializes  and populates the the length, data and target tensors, and raw texts list
         """
 
-        # We made minor modifications in the assert block because targets and sentences are passed as lists not tensors in our implementation.
-        # some parts converted to tensors to use size() property.
-
+        # We have made minor modifications in the assert block because targets and sentences have been passed as lists
         assert (
 
 
@@ -34,6 +33,7 @@ class STSDataset(Dataset):
             == len(sent2_tensor)
             == torch.tensor(list(sents1_length_tensor)).size(0)
             == torch.tensor(list(sents2_length_tensor)).size(0)
+            == len(sen_class)
         )
 
         self.sent1_tensor = sent1_tensor
@@ -43,6 +43,7 @@ class STSDataset(Dataset):
         self.sents2_length_tensor = sents2_length_tensor
         self.raw_sents_1 = raw_sents_1
         self.raw_sents_2 = raw_sents_2
+        self.sen_class = sen_class
 
     def __getitem__(self, index):
         """
@@ -56,6 +57,7 @@ class STSDataset(Dataset):
             self.target_tensor[index],
             self.raw_sents_1[index],
             self.raw_sents_2[index],
+            self.sen_class[index],
         )
 
     def __len__(self):

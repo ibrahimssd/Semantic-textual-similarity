@@ -27,8 +27,6 @@ class Preprocess:
         score = columns_mapping['label']
         cleaned_data = []
         for data_frame in data:
-
-            # extract two sentences groups in a list
             groupA = list(data_frame[sen_A])
             groupB = list(data_frame[sen_B])
             # normalize text to lower case
@@ -55,12 +53,12 @@ class Preprocess:
             data_frame[sen_B] = groupB
             cleaned_data.append(data_frame)
 
-        # form dictionary for the three splits
+        # concatenate all data frames in one frame
+        data_frame = pd.concat(cleaned_data, ignore_index=True)
+
+        # dictionary dataset for the three splits
         sick_dataset = {'train': Dataset.from_pandas(cleaned_data[0]),
                         'validation': Dataset.from_pandas(cleaned_data[1]),
                         'test': Dataset.from_pandas(cleaned_data[2])}
-
-        # data frame for all splits combined and cleaned
-        data_frame = pd.concat(cleaned_data, ignore_index=True)
 
         return sick_dataset

@@ -34,9 +34,11 @@ class STSData:
         self.model_name = model_name
         self.max_sequence_len = max_sequence_len
         self.dataset_name = dataset_name
+
         # load data file into memory
         self.load_data(dataset_name, columns_mapping, stopwords_path)
         self.columns_mapping = columns_mapping
+
         # create vocabulary over entire dataset before train/test split
         self.create_vocab()
 
@@ -50,13 +52,14 @@ class STSData:
         sick_dataset = load_dataset(
             dataset_name, download_mode='reuse_cache_if_exists')
 
-        # remove unneccessary rows
-        sick_dataset = sick_dataset.remove_columns(['label', 'id', 'entailment_AB', 'entailment_BA', 'sentence_A_original',
+        # remove unneccessary rows from data
+        sick_dataset = sick_dataset.remove_columns(['id', 'entailment_AB', 'entailment_BA', 'sentence_A_original',
                                                    'sentence_B_original', 'sentence_A_dataset', 'sentence_B_dataset'])
         train_pd = pd.DataFrame.from_dict(sick_dataset['train'])
         validation_pd = pd.DataFrame.from_dict(sick_dataset['validation'])
         test_pd = pd.DataFrame.from_dict(sick_dataset['test'])
         self.sick_dataframes = [train_pd, validation_pd, test_pd]
+
         # perform text preprocessing
         process = Preprocess(stopwords_path)
         self.processed_data = process.perform_preprocessing(
@@ -91,6 +94,7 @@ class STSData:
         preprocessed_data = train_data['sentenceA&B'].apply(
             lambda x: data_field.preprocess(x))
 
+        # build vocab
         data_field.build_vocab(
             preprocessed_data,
             vectors='fasttext.simple.300d')
@@ -118,7 +122,7 @@ class STSData:
         val_data_df = pd.DataFrame(self.processed_data['validation'])
         test_data_df = pd.DataFrame(self.processed_data['test'])
 
-        # vectorization step
+        # vectorization
         train_data_df['sent1_tensor'] = train_data_df['sentence_A'].apply(
             lambda sen: self.vectorize_sequence(sen))
         train_data_df['sent2_tensor'] = train_data_df['sentence_B'].apply(
@@ -157,10 +161,10 @@ class STSData:
                 train_data_df['relatedness_score'].max() - train_data_df['relatedness_score'].min())
 
             val_data_df['relatedness_score'] = (val_data_df['relatedness_score'] - val_data_df['relatedness_score'].min())/(
-                val_data_df['relatedness_score'].max() - val_data_df['relatedness_score'].min())
+                val_data_df['relatedness_score'].max()-val_data_df['relatedness_score'].min())
 
             test_data_df['relatedness_score'] = (test_data_df['relatedness_score'] - test_data_df['relatedness_score'].min())/(
-                test_data_df['relatedness_score'].max() - test_data_df['relatedness_score'].min())
+                test_data_df['relatedness_score'].max()-test_data_df['relatedness_score'].min())
 
         # convert sentenses to PyTorch tensors to feed in the model
         train_data_df = self.data2tensors(train_data_df)
@@ -190,7 +194,8 @@ class STSData:
                                    train_data_df['sents1_length_tensor'],
                                    train_data_df['sents2_length_tensor'],
                                    train_data_df['sentence_A'],
-                                   train_data_df['sentence_B']
+                                   train_data_df['sentence_B'],
+                                   train_data_df['label']
                                    )
 
         val_dataset = STSDataset(val_data_df['sent1_tensor'],
@@ -199,7 +204,8 @@ class STSData:
                                  val_data_df['sents1_length_tensor'],
                                  val_data_df['sents2_length_tensor'],
                                  val_data_df['sentence_A'],
-                                 val_data_df['sentence_B']
+                                 val_data_df['sentence_B'],
+                                 val_data_df['label']
                                  )
 
         test_dataset = STSDataset(test_data_df['sent1_tensor'],
@@ -208,10 +214,11 @@ class STSData:
                                   test_data_df['sents1_length_tensor'],
                                   test_data_df['sents2_length_tensor'],
                                   test_data_df['sentence_A'],
-                                  test_data_df['sentence_B']
+                                  test_data_df['sentence_B'],
+                                  test_data_df['label']
                                   )
 
-        # build data loaders for the three splits
+        # build data loader for the splits
         train_loader = DataLoader(
             dataset=train_dataset, batch_size=batch_size, shuffle=True, drop_last=True)
         val_loader = DataLoader(

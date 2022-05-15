@@ -1,8 +1,9 @@
 from scipy.stats import spearmanr
 import logging
-from sklearn.metrics import r2_score, mean_absolute_error
+from sklearn.metrics import mean_absolute_error
 import numpy as np
 from train import attention_penalty_loss
+from torch import nn
 
 
 def evaluate_test_set(model, data_loader, config_dict):
@@ -26,13 +27,13 @@ def evaluate_test_set(model, data_loader, config_dict):
         # protect dataloader sampling process
         try:
             #  batch sampling
-            sent1_batch, sent2_batch, sent1_lengths, sent2_lengths, targets, raw_sent1, raw_sent2 = next(
+            sent1_batch, sent2_batch, sent1_lengths, sent2_lengths, targets, _, _, _ = next(
                 test_generator)
 
         except StopIteration:
             # restart the generator if the previous generator is exhausted.
             test_generator = iter(test_loader)
-            sent1_batch, sent2_batch, sent1_lengths, sent2_lengths, targets, raw_sent1, raw_sent2 = next(
+            sent1_batch, sent2_batch, sent1_lengths, sent2_lengths, targets, _, _, _ = next(
                 test_generator)
 
         predictions, attention_matrix = model.forward(
@@ -40,23 +41,23 @@ def evaluate_test_set(model, data_loader, config_dict):
 
         # protect loss calculations from nan values
         try:
-            # targets= Variable(targets, requires_grad=True)
-            abs_batch_test_loss = mean_absolute_error(targets.detach().numpy(), predictions.detach().numpy()) + (attention_penalty_loss(attention_matrix,
-                                                                                                                                        self_attention_config['penalty'], device))
 
+            abs_batch_test_loss = mean_absolute_error(
+                targets.detach().numpy(), predictions.detach().numpy())
+#             + (attention_penalty_loss(attention_matrix,
+#                self_attention_config['penalty'], device))
         except RuntimeError:
 
             raise Exception("nan values issue ")
 
-        # aggregate loss for test batches
+        # save the loss for test batches
         total_abs_loss += abs_batch_test_loss
 
         y_true += list(targets.detach().numpy())
         y_pred += list(predictions.detach().numpy())
 
-    spearman_score, _ = spearmanr(y_true, y_pred, nan_policy='omit')
+    spearman_score, P_val = spearmanr(y_true, y_pred, nan_policy='omit')
     pearson_score = np.corrcoef(y_true, y_pred)[0, 1]
 
-    # print absolute error , spearman and pearson correlation
-    print('abs_batch_test_loss: %.3f, spearman_score: %.3f , pearson_score: %.3f' % (
-        total_abs_loss/num_test_batch, spearman_score, pearson_score))
+    print('abs_test_loss: %.3f, spearman_score: %.3f , pearson_score: %.3f, P_value: %.3f' % (
+        total_abs_loss/num_test_batch, spearman_score, pearson_score, P_val))

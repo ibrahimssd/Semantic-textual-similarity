@@ -5,9 +5,9 @@ import numpy as np
 
 from tqdm import tqdm
 from torch.autograd import Variable
-from sklearn.metrics import r2_score, explained_variance_score, d2_tweedie_score, mean_absolute_error
 from scipy.stats import spearmanr
-from utils import plot_progress, r2_loss
+from utils import plot_progress
+from sklearn.metrics import r2_score
 from datetime import datetime
 logging.basicConfig(level=logging.INFO)
 
@@ -16,17 +16,93 @@ Script for training the neural network and saving the better models
 while monitoring a metric like accuracy etc
 """
 
+# classification training functions
 
-def train_model(model, optimizer, scheduler, dataloader, data, max_epochs, config_dict, clip=False):
+
+def train_classifier_model(model, optimizer, scheduler, dataloader, max_epochs, config_dict, clip=False, classify=False):
+
+    device = config_dict["device"]
+    self_attention_config = config_dict['self_attention_config']
+    loss = nn.CrossEntropyLoss()
+    train_loader, _, _ = dataloader
+    train_generator = iter(train_loader)
+    batch_train_num = len(train_loader)
+
+    for epoch in tqdm(range(max_epochs)):
+        y_true = list()
+        y_pred = list()
+        total_loss = 0
+        correct = 0
+
+        # iterate over train batches
+        for batch in range(batch_train_num):
+
+            # protection block for restarting sampling in case dataloader stops
+            try:
+                # batch Sampling
+                sent1_batch, sent2_batch, sent1_lengths, sent2_lengths, _, _, _, target_classes = next(
+                    train_generator)
+            except StopIteration:
+                # restart the generator if the previous generator is exhausted.
+                train_generator = iter(train_loader)
+                sent1_batch, sent2_batch, sent1_lengths, sent2_lengths, _, _, _, target_classes = next(
+                    train_generator)
+
+            # calculate classifiy predictions (default classification=False (regression predictions))
+            predictions, attention_matrix = model.forward(sent1_batch, sent2_batch, sent1_lengths, sent2_lengths,
+                                                          classification=classify)
+
+            target_classes = torch.tensor(target_classes)
+            target_classes = Variable(
+                target_classes.float(), requires_grad=True)
+
+            batch_train_loss = loss(predictions, target_classes.long()) + attention_penalty_loss(attention_matrix,
+                                                                                                 self_attention_config['penalty'], device)
+
+            optimizer.zero_grad()  # or  model.zero_grad(set_to_none=True)
+            batch_train_loss.backward()
+
+            # gradient clipping before optimizer step
+            if clip:
+
+                torch.nn.utils.clip_grad_norm(model.parameters(), 0.5)
+
+            optimizer.step()
+            total_loss += batch_train_loss
+
+            correct += torch.eq(torch.max(predictions, 1)
+                                [1], target_classes).data.sum()
+            y_true += list(target_classes)
+            y_pred += list(torch.max(predictions, 1)[1])
+
+        scheduler.step()
+
+        # computing accuracy of classification
+
+        acc = correct/(batch_train_num*train_loader.batch_size)
+
+        # print results every 100 epochs
+        if True:  # epoch % 5 == 0:
+            print('[%d/%d] train_loss: %.3f, train_accuracy: %.3f ' %
+                  (epoch, max_epochs - 1, total_loss.data.float()/batch_train_num, acc))
+        if epoch == max_epochs - 1:
+            print('Final accuracy: %.3f, expected %.3f ' % (acc, 1.0))
+
+    return model
+
+
+# Target task training functions
+
+def target_train_model(model, optimizer, scheduler, dataloader, max_epochs, config_dict, clip=False):
     device = config_dict["device"]
     self_attention_config = config_dict['self_attention_config']
     mse = nn.MSELoss()
     max_score = -1
-    train_loader, val_loader, test_loader = dataloader
+    train_loader, _, _ = dataloader
     train_generator = iter(train_loader)
     batch_train_num = len(train_loader)
 
-    # save results for visualization
+    # save information for visualization
     dictionary_info = {}
     dictionary_info['train_loss'] = []
     dictionary_info['val_loss'] = []
@@ -45,19 +121,19 @@ def train_model(model, optimizer, scheduler, dataloader, data, max_epochs, confi
             # protection block for restarting sampling in case dataloader stops
             try:
                 # batch Samples
-                sent1_batch, sent2_batch, sent1_lengths, sent2_lengths, targets, raw_sent1, raw_sent2 = next(
+                sent1_batch, sent2_batch, sent1_lengths, sent2_lengths, targets, _, _, _ = next(
                     train_generator)
             except StopIteration:
                 # restart the generator if the previous generator is exhausted.
                 train_generator = iter(train_loader)
-                sent1_batch, sent2_batch, sent1_lengths, sent2_lengths, targets, raw_sent1, raw_sent2 = next(
+                sent1_batch, sent2_batch, sent1_lengths, sent2_lengths, targets, _, _, _ = next(
                     train_generator)
 
             # calculate predictions and attended matrix for penalizing term
             predictions, attention_matrix = model.forward(
                 sent1_batch, sent2_batch, sent1_lengths, sent2_lengths)
 
-            # Protect loss calculation from nan values
+            # Protect loss calculations (mse loss + penalty term)
             try:
 
                 targets = Variable(targets, requires_grad=True)
@@ -69,10 +145,10 @@ def train_model(model, optimizer, scheduler, dataloader, data, max_epochs, confi
                 raise Exception(
                     "nan values on regularization. Rremove regularization or add very small values")
 
-            optimizer.zero_grad()  # model.zero_grad(set_to_none=True)
+            optimizer.zero_grad()  # or  model.zero_grad(set_to_none=True)
             batch_train_loss.backward()
 
-            # gradient clipping protection from gradient exploding
+            # gradient clipping before optimizer step
             if clip:
 
                 torch.nn.utils.clip_grad_norm(model.parameters(), 0.5)
@@ -85,12 +161,12 @@ def train_model(model, optimizer, scheduler, dataloader, data, max_epochs, confi
 
         scheduler.step()
 
-        # computing accuracy using pearson correlation Best possible score is 1.0
-        # and it can be negative (because the model can be arbitrarily worse) [-1, 1]
+        # computing accuracy using pearson correlation score, Best possible score is 1.0
+        # and it can be negative (because the model can be arbitrarily worse)
 
-        score = np.corrcoef(y_true, y_pred)[0, 1]  # pearson correlation
-        #r2_score(y_true, y_pred)
-        # #explained_variance_score(y_true, y_pred)
+        # explained_variance_score(y_true, y_pred)
+#         r2score = r2_score(y_true, y_pred)
+        score = np.corrcoef(y_true, y_pred)[0, 1]
 
         # compute model metrics on dev set
         val_score, val_loss, val_pvalue = evaluate_dev_set(
@@ -107,7 +183,7 @@ def train_model(model, optimizer, scheduler, dataloader, data, max_epochs, confi
                 config_dict["model_name"]))
 
         logging.info(
-            "Train loss: {} - Train pearson score: {} -- Validation loss: {} - Validation pearson score: {}- Validation                  p_value: {}".format(
+            "Train loss: {} - Train pearson score: {} -- Validation loss: {} - Validation pearson score: {}- Validation p_value: {}".format(
                 total_loss.data.float()/batch_train_num, score, val_loss, val_score, val_pvalue
             )
         )
@@ -145,7 +221,7 @@ def train_model(model, optimizer, scheduler, dataloader, data, max_epochs, confi
                            str(dictionary_info['val_score']))
             textfile.close()
 
-    # Visualize the progress
+    # Visualize  progress
     plot_progress(dictionary_info, max_epochs)
     return model
 
@@ -159,7 +235,7 @@ def evaluate_dev_set(model, criterion, data_loader, config_dict, device):
 
     device = config_dict["device"]
     self_attention_config = config_dict['self_attention_config']
-    train_loader, val_loader, test_loader = data_loader
+    _, val_loader, _ = data_loader
     val_generator = iter(val_loader)
     batch_val_num = len(val_loader)
     y_true = list()
@@ -172,13 +248,13 @@ def evaluate_dev_set(model, criterion, data_loader, config_dict, device):
         # protection block for restarting sampling in case dataloader stops
         try:
             # Samples the batch
-            sent1_batch, sent2_batch, sent1_lengths, sent2_lengths, targets, raw_sent1, raw_sent2 = next(
+            sent1_batch, sent2_batch, sent1_lengths, sent2_lengths, targets, _, _, _ = next(
                 val_generator)
 
         except StopIteration:
             # restart the generator if the previous generator is exhausted.
             val_generator = iter(val_loader)
-            sent1_batch, sent2_batch, sent1_lengths, sent2_lengths, targets, raw_sent1, raw_sent2 = next(
+            sent1_batch, sent2_batch, sent1_lengths, sent2_lengths, targets, _, _, _ = next(
                 val_generator)
 
         predictions, attention_matrix = model.forward(
@@ -187,7 +263,7 @@ def evaluate_dev_set(model, criterion, data_loader, config_dict, device):
 
         try:
 
-            # evaluate penalized loss
+            # evaluate penalized loss (loss + penalty term)
             batch_val_loss = criterion(predictions.float(), targets.float()) + (attention_penalty_loss(attention_matrix,
                                                                                                        self_attention_config['penalty'], device))
         except RuntimeError:
@@ -195,7 +271,7 @@ def evaluate_dev_set(model, criterion, data_loader, config_dict, device):
             raise Exception(
                 "nan values on regularization. Rremove regularization or add very small values")
 
-        # save avg loss for batches in a list
+        # save avg loss for batches into list
         total_loss += batch_val_loss
         y_true += list(targets.detach().numpy())
         y_pred += list(predictions.detach().numpy())
